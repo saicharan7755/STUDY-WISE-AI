@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user-specific settings and profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "StudyPlan": {
+      "title": "Study Plan",
+      "description": "A generated study plan based on syllabus and exam dates.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "syllabus": { "type": "string" },
+        "examDate": { "type": "string", "format": "date" },
+        "startDate": { "type": "string", "format": "date" },
+        "generatedPlan": { "type": "string", "description": "The full markdown or JSON of the plan" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "syllabus", "examDate"]
+    },
+    "StudySession": {
+      "title": "Study Session",
+      "description": "An individual day's study task.",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "dueDate": { "type": "string", "format": "date", "description": "Optional deadline for this session" },
+        "topic": { "type": "string" },
+        "description": { "type": "string" },
+        "notes": { "type": "string", "description": "User notes for this session" },
+        "isCompleted": { "type": "boolean" },
+        "reminderTime": { "type": "string", "description": "Time for the reminder (e.g., 09:00)" },
+        "reminderSent": { "type": "boolean" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] }
+      },
+      "required": ["planId", "userId", "date", "topic"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    },
+    "/studyPlans/{planId}": {
+      "schema": "StudyPlan",
+      "description": "Main study plan documents"
+    },
+    "/studyPlans/{planId}/sessions/{sessionId}": {
+      "schema": "StudySession",
+      "description": "Individual sessions within a plan"
+    }
+  }
+}

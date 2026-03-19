@@ -1,0 +1,129 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required) - Firebase Auth UID
+//   - displayName: string (optional)
+//   - email: string (required)
+//   - createdAt: timestamp (optional)
+//
+// Collection: studyPlans
+// Document ID: {planId}
+// Fields:
+//   - userId: string (required) - Owner of the plan
+//   - title: string (required)
+//   - syllabus: string (required)
+//   - examDate: string (required) - ISO date
+//   - startDate: string (required) - ISO date
+//   - generatedPlan: string (required) - Markdown content
+//   - createdAt: timestamp (required)
+//
+// Collection: studyPlans/{planId}/sessions
+// Document ID: {sessionId}
+// Fields:
+//   - planId: string (required)
+//   - userId: string (required)
+//   - date: string (required) - ISO date
+//   - topic: string (required)
+//   - description: string (optional)
+//   - isCompleted: bool (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && 
+             resource != null && 
+             'userId' in resource.data && 
+             request.auth.uid == resource.data.userId;
+    }
+
+    function isCollaborator() {
+      return isAuthenticated() && 
+             resource != null && 
+             'collaborators' in resource.data && 
+             request.auth.token.email in resource.data.collaborators;
+    }
+
+    function isPublic() {
+      return resource != null && 
+             'isPublic' in resource.data && 
+             resource.data.isPublic == true;
+    }
+
+    function isPlanOwner(planId) {
+      let plan = get(/databases/$(database)/documents/studyPlans/$(planId)).data;
+      return isAuthenticated() && 
+             (plan.userId == request.auth.uid || ( 'collaborators' in plan && request.auth.token.email in plan.collaborators ));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.email.size() < 255;
+    }
+
+    function isValidStudyPlan(data) {
+      return data.keys().hasAll(['userId', 'title', 'syllabus', 'examDate', 'totalSessions', 'completedSessions']) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.syllabus is string && data.syllabus.size() > 0 && data.syllabus.size() < 10000 &&
+             data.totalSessions is int &&
+             data.completedSessions is int &&
+             (!('startDate' in data) || data.startDate is string) &&
+             (!('collaborators' in data) || data.collaborators is list) &&
+             (!('isPublic' in data) || data.isPublic is bool);
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['date', 'topic', 'isCompleted']) &&
+             (!('userId' in data) || data.userId == request.auth.uid) &&
+             data.topic is string && data.topic.size() > 0 && data.topic.size() < 500 &&
+             data.isCompleted is bool &&
+             (!('description' in data) || data.description is string) &&
+             (!('reminderTime' in data) || data.reminderTime is string || data.reminderTime == null) &&
+             (!('reminderSent' in data) || data.reminderSent is bool) &&
+             (!('dueDate' in data) || data.dueDate is string || data.dueDate == null) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 5000)) &&
+             (!('priority' in data) || data.priority in ['low', 'medium', 'high']);
+    }
+
+    // Rules
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+    
+    match /studyPlans/{planId} {
+      allow read: if isDocOwner() || isCollaborator() || isPublic();
+      allow create: if isAuthenticated() && isValidStudyPlan(request.resource.data);
+      allow update: if (isDocOwner() || isCollaborator()) && isValidStudyPlan(request.resource.data);
+      allow delete: if isDocOwner();
+      
+      match /sessions/{sessionId} {
+        allow read: if isDocOwner() || isCollaborator() || isPublic() || isPlanOwner(planId);
+        allow create: if isPlanOwner(planId) && isValidSession(request.resource.data);
+        allow update: if (isDocOwner() || isCollaborator() || isPlanOwner(planId)) && isValidSession(request.resource.data);
+        allow delete: if isDocOwner() || isPlanOwner(planId);
+      }
+    }
+  }
+}
